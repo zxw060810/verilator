@@ -33,9 +33,10 @@ Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments 
 Write-Output "=== D2: verilate combo TB with the MSVC-built Verilator ==="
 $env:VERILATOR_ROOT = $instFwd
 $objD = "ci_win32/obj_d"
-& "$InstallRoot\bin\verilator.exe" --cc --exe --Mdir $objD -CFLAGS "/O2 /EHsc /std:c++17" --top-module tb_rand_combos ci_win32/tb_rand_combos.sv *> "$WorkDir\ci_win32\log_d2_verilate.txt"
+& "$InstallRoot\bin\verilator_bin.exe" --cc --exe --Mdir $objD -CFLAGS "/O2 /EHsc /std:c++17" --top-module tb_rand_combos ci_win32/tb_rand_combos.sv *> "$WorkDir\ci_win32\log_d2_verilate.txt"
 Write-Output "  verilate exit=$LASTEXITCODE"
 if (-not (Test-Path "$WorkDir\$objD\Vtb_rand_combos.mk")) { Die "mk not generated (see ci_win32/log_d2_verilate.txt)" }
+if (-not (Test-Path "$WorkDir\$objD\Vtb_rand_combos.cpp")) { Die "model cpp not generated" }
 
 Write-Output "=== D3: build model with cl (official chain runtime; all generated sources + our main) ==="
 $objDAbs = "$WorkDir\$objD"
