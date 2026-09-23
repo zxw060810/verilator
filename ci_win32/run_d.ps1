@@ -33,7 +33,7 @@ Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments 
 Write-Output "=== D2: verilate combo TB with the MSVC-built Verilator ==="
 $env:VERILATOR_ROOT = $instFwd
 $objD = "ci_win32/obj_d"
-& "$InstallRoot\bin\verilator_bin.exe" --cc --exe --Mdir $objD -CFLAGS "/O2 /EHsc /std:c++17" --top-module tb_rand_combos ci_win32/tb_rand_combos.sv *> "$WorkDir\ci_win32\log_d2_verilate.txt"
+& "$InstallRoot\bin\verilator_bin.exe" --cc --exe --Mdir $objD -CFLAGS "/O2 /EHsc /std:c++20" --top-module tb_rand_combos ci_win32/tb_rand_combos.sv *> "$WorkDir\ci_win32\log_d2_verilate.txt"
 Write-Output "  verilate exit=$LASTEXITCODE"
 if (-not (Test-Path "$WorkDir\$objD\Vtb_rand_combos.mk")) { Die "mk not generated (see ci_win32/log_d2_verilate.txt)" }
 if (-not (Test-Path "$WorkDir\$objD\Vtb_rand_combos.cpp")) { Die "model cpp not generated" }
@@ -51,7 +51,7 @@ $srcs += @(
 if ($srcs.Count -lt 10) { Die "unexpectedly few sources ($($srcs.Count))" }
 foreach ($s in $srcs) { if (-not (Test-Path $s)) { Die "missing src $s" } }
 Write-Output "  compiling $($srcs.Count) sources with cl"
-cl /nologo /EHsc /std:c++17 /O2 /W3 /Fe:ci_win32\Vtb_rand_combos_official.exe "-I$rtInc" "-I$objDAbs" @srcs *> "$WorkDir\ci_win32\log_d3_build.txt"
+cl /nologo /EHsc /std:c++20 /O2 /W3 /Fe:ci_win32\Vtb_rand_combos_official.exe "-I$rtInc" "-I$objDAbs" @srcs *> "$WorkDir\ci_win32\log_d3_build.txt"
 if ($LASTEXITCODE -ne 0) { Die "cl build failed (see ci_win32/log_d3_build.txt)" }
 
 Write-Output "=== D4: run combo TB (official-chain build; z3 from PATH via choco) ==="

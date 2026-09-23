@@ -35,9 +35,9 @@ $objF = "ci_win32/obj_f"
 
 Write-Output "=== E2: verilate combo TB + free TB (--binary; auto-make step expected to fail on PATH, files are still generated) ==="
 $env:PATH = "$envRoot\Library\bin;$envRoot\Scripts;$base"   # NOTE: no make on PATH on purpose
-& "$envRoot\Scripts\verilator.bat" --binary --Mdir $objE -CFLAGS -O2 --top-module tb_rand_combos ci_win32/tb_rand_combos.sv *> "$WorkDir\ci_win32\log_e2_verilate.txt"
+& "$envRoot\Scripts\verilator.bat" --binary --Mdir $objE -CFLAGS -O2 -CFLAGS -std=gnu++20 --top-module tb_rand_combos ci_win32/tb_rand_combos.sv *> "$WorkDir\ci_win32\log_e2_verilate.txt"
 $vlExit = $LASTEXITCODE
-& "$envRoot\Scripts\verilator.bat" --binary --Mdir $objF -CFLAGS -O2 --top-module tb_free_only ci_win32/tb_free_only.sv *> "$WorkDir\ci_win32\log_e2_verilate_free.txt"
+& "$envRoot\Scripts\verilator.bat" --binary --Mdir $objF -CFLAGS -O2 -CFLAGS -std=gnu++20 --top-module tb_free_only ci_win32/tb_free_only.sv *> "$WorkDir\ci_win32\log_e2_verilate_free.txt"
 $vlExit2 = $LASTEXITCODE
 Write-Output "  verilate exits: combos=$vlExit free=$vlExit2 (non-zero expected: runner has a make on PATH, auto-make fails on cl env, files are still generated)"
 if (-not (Test-Path "$WorkDir\$objE\Vtb_rand_combos.mk")) { Die "combos mk not generated" }
@@ -75,7 +75,7 @@ $srcs = @(
   "$rtInc\verilated_timing.cpp"
 )
 foreach ($s in $srcs) { if (-not (Test-Path $s)) { Die "missing src $s" } }
-cl /nologo /EHsc /std:c++17 /O2 /W3 /Fe:ci_win32\Vtb_rand_combos_msvc.exe "-I$rtInc" "-I$objEAbs" @srcs *> "$WorkDir\ci_win32\log_e5_msvc_build.txt"
+cl /nologo /EHsc /std:c++20 /O2 /W3 /Fe:ci_win32\Vtb_rand_combos_msvc.exe "-I$rtInc" "-I$objEAbs" @srcs *> "$WorkDir\ci_win32\log_e5_msvc_build.txt"
 if ($LASTEXITCODE -ne 0) { Die "cl build failed (see ci_win32/log_e5_msvc_build.txt)" }
 
 Write-Output "=== E6: run combo TB (MSVC build) ==="
