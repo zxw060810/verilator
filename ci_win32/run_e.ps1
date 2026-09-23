@@ -68,14 +68,13 @@ Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments 
 $objEAbs = "$WorkDir\$objE"
 $srcs = @(
   "$objEAbs\Vtb_rand_combos__ALL.cpp",
-  "$objEAbs\Vtb_rand_combos__main.cpp",
   "$rtInc\verilated.cpp",
   "$rtInc\verilated_random.cpp",
   "$rtInc\verilated_threads.cpp",
   "$rtInc\verilated_timing.cpp"
 )
 foreach ($s in $srcs) { if (-not (Test-Path $s)) { Die "missing src $s" } }
-cl /nologo /EHsc /std:c++20 /O2 /W3 /Fe:ci_win32\Vtb_rand_combos_msvc.exe "-I$rtInc" "-I$objEAbs" @srcs *> "$WorkDir\ci_win32\log_e5_msvc_build.txt"
+cl /nologo /EHsc /std:c++20 /O2 /W3 /DVL_TIME_CONTEXT /Fe:ci_win32\Vtb_rand_combos_msvc.exe "-I$rtInc" "-I$objEAbs" @srcs *> "$WorkDir\ci_win32\log_e5_msvc_build.txt"
 if ($LASTEXITCODE -ne 0) { Die "cl build failed (see ci_win32/log_e5_msvc_build.txt)" }
 
 Write-Output "=== E6: run combo TB (MSVC build) ==="

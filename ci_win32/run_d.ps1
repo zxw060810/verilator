@@ -51,7 +51,7 @@ $srcs += @(
 if ($srcs.Count -lt 10) { Die "unexpectedly few sources ($($srcs.Count))" }
 foreach ($s in $srcs) { if (-not (Test-Path $s)) { Die "missing src $s" } }
 Write-Output "  compiling $($srcs.Count) sources with cl"
-cl /nologo /EHsc /std:c++20 /O2 /W3 /Fe:ci_win32\Vtb_rand_combos_official.exe "-I$rtInc" "-I$objDAbs" @srcs *> "$WorkDir\ci_win32\log_d3_build.txt"
+cl /nologo /EHsc /std:c++20 /O2 /W3 /DVL_TIME_CONTEXT /Fe:ci_win32\Vtb_rand_combos_official.exe "-I$rtInc" "-I$objDAbs" @srcs *> "$WorkDir\ci_win32\log_d3_build.txt"
 if ($LASTEXITCODE -ne 0) { Die "cl build failed (see ci_win32/log_d3_build.txt)" }
 
 Write-Output "=== D4: run combo TB (official-chain build; z3 from PATH via choco) ==="
