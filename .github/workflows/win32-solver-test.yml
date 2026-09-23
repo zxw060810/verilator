@@ -1,0 +1,53 @@
+name: win32-solver-test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [test-win32]
+
+jobs:
+  win-e-local-chain:
+    name: E | conda runtime patch x {mingw,msvc} x combos
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: false
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: ucrt64
+          update: false
+          install: "gcc make"
+      - name: run chain E
+        shell: pwsh
+        run: ./ci_win32/run_e.ps1 -CondaRoot $env:CONDA -MsysRoot "C:\msys64"
+      - name: upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e-logs
+          path: ci_win32/log_*.txt
+
+  win-d-official-chain:
+    name: D | official MSVC verilator x combos
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: install z3
+        shell: pwsh
+        run: choco install z3 -y
+      - name: build verilator (official windows chain, patched)
+        shell: pwsh
+        run: ./ci/ci-win-compile.ps1
+      - name: run chain D
+        shell: pwsh
+        run: ./ci_win32/run_d.ps1
+      - name: upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d-logs
+          path: ci_win32/log_*.txt

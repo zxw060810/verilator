@@ -1,0 +1,100 @@
+# Job E: local-chain replication on the runner.
+#   conda-forge verilator 5.052 + z3, then swap in the PATCHED runtime from this branch,
+#   then build the model twice (MinGW g++ and MSVC cl) and run the combo TB on both.
+param(
+  [string]$CondaRoot = "C:\Miniconda3",     # (conda info --base)
+  [string]$EnvName   = "vtest",
+  [string]$MsysRoot  = "C:\msys64",
+  [string]$WorkDir   = $PWD.Path
+)
+$ErrorActionPreference = "Continue"
+$base = $env:PATH
+$envRoot = Join-Path $CondaRoot "envs\$EnvName"
+$vrRoot  = ($envRoot -replace "\\","/") + "/Library/"   # forward slashes for verilated.mk
+$rtInc   = Join-Path $envRoot "Library\include"
+$wsInc   = Join-Path $WorkDir "include"                  # patched runtime from this branch
+
+function Die($m) { Write-Output "FATAL: $m"; exit 1 }
+
+Write-Output "=== E0: conda create verilator=5.052 + z3prover ==="
+& "$CondaRoot\Scripts\conda.exe" create -y -n $EnvName -c conda-forge "verilator=5.052" z3prover *> "$WorkDir\ci_win32\log_e0_conda.txt"
+if ($LASTEXITCODE -ne 0) { Die "conda create failed" }
+Write-Output "  conda exit=$LASTEXITCODE"
+
+Write-Output "=== E1: swap in patched runtime (verilated_random.{cpp,h} from branch) ==="
+foreach ($f in @("verilated_random.cpp", "verilated_random.h")) {
+  $src = Join-Path $wsInc $f; $dst = Join-Path $rtInc $f
+  if (-not (Test-Path $src)) { Die "missing $src" }
+  Copy-Item $src $dst -Force
+  Write-Output ("  {0}: {1} bytes -> {2}" -f $f, (Get-Item $dst).Length, $dst)
+}
+
+$env:VERILATOR_ROOT = $vrRoot
+$objE = "ci_win32/obj_e"
+$objF = "ci_win32/obj_f"
+
+Write-Output "=== E2: verilate combo TB + free TB (--binary; auto-make step expected to fail on PATH, files are still generated) ==="
+$env:PATH = "$envRoot\Library\bin;$envRoot\Scripts;$base"   # NOTE: no make on PATH on purpose
+& "$envRoot\Scripts\verilator.bat" --binary --Mdir $objE -CFLAGS -O2 --top-module tb_rand_combos ci_win32/tb_rand_combos.sv *> "$WorkDir\ci_win32\log_e2_verilate.txt"
+$vlExit = $LASTEXITCODE
+& "$envRoot\Scripts\verilator.bat" --binary --Mdir $objF -CFLAGS -O2 --top-module tb_free_only ci_win32/tb_free_only.sv *> "$WorkDir\ci_win32\log_e2_verilate_free.txt"
+$vlExit2 = $LASTEXITCODE
+Write-Output "  verilate exits: combos=$vlExit free=$vlExit2 (non-zero expected: no make on PATH)"
+if (-not (Test-Path "$WorkDir\$objE\Vtb_rand_combos__ALL.cpp"))  { Die "combos __ALL.cpp not generated" }
+if (-not (Test-Path "$WorkDir\$objE\Vtb_rand_combos__main.cpp")) { Die "combos __main.cpp not generated" }
+if (-not (Test-Path "$WorkDir\$objF\Vtb_free_only.mk"))          { Die "free mk not generated" }
+
+Write-Output "=== E3: build models with MinGW g++ (static) ==="
+$env:PATH = "$MsysRoot\ucrt64\bin;$MsysRoot\usr\bin;$base"
+mingw32-make -C $objE -f Vtb_rand_combos.mk CXX=g++ "LINK=g++ -static" AR=ar PYTHON3=python VERILATOR_ROOT=$vrRoot -j 4 *> "$WorkDir\ci_win32\log_e3_make.txt"
+if ($LASTEXITCODE -ne 0) { Die "mingw make combos failed (see ci_win32/log_e3_make.txt)" }
+mingw32-make -C $objF -f Vtb_free_only.mk CXX=g++ "LINK=g++ -static" AR=ar PYTHON3=python VERILATOR_ROOT=$vrRoot -j 4 *> "$WorkDir\ci_win32\log_e3_make_free.txt"
+if ($LASTEXITCODE -ne 0) { Die "mingw make free failed" }
+$exeMin = "$WorkDir\$objE\Vtb_rand_combos.exe"
+if (-not (Test-Path $exeMin)) { Die "mingw exe missing" }
+Write-Output "  mingw exe: $(Get-Item $exeMin).LastWriteTime"
+
+Write-Output "=== E4: run combo TB (MinGW build) ==="
+$env:PATH = "$envRoot\Library\bin;$MsysRoot\ucrt64\bin;$base"
+& $exeMin *> "$WorkDir\ci_win32\log_e4_run_mingw.txt"
+Write-Output "  run exit=$LASTEXITCODE"
+& "$WorkDir\ci_win32\check.ps1" -Log "$WorkDir\ci_win32\log_e4_run_mingw.txt" -Expected 11 -Label mingw
+if ($LASTEXITCODE -ne 0) { Die "combo TB check failed on MinGW build" }
+
+Write-Output "=== E5: build combo model with MSVC cl ==="
+$VsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+Import-Module "$VsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64" | Out-Null
+$objEAbs = "$WorkDir\$objE"
+$srcs = @(
+  "$objEAbs\Vtb_rand_combos__ALL.cpp",
+  "$objEAbs\Vtb_rand_combos__main.cpp",
+  "$rtInc\verilated.cpp",
+  "$rtInc\verilated_random.cpp",
+  "$rtInc\verilated_threads.cpp",
+  "$rtInc\verilated_timing.cpp"
+)
+foreach ($s in $srcs) { if (-not (Test-Path $s)) { Die "missing src $s" } }
+cl /nologo /EHsc /std:c++17 /O2 /W3 /Fe:ci_win32\Vtb_rand_combos_msvc.exe "-I$rtInc" "-I$objEAbs" @srcs *> "$WorkDir\ci_win32\log_e5_msvc_build.txt"
+if ($LASTEXITCODE -ne 0) { Die "cl build failed (see ci_win32/log_e5_msvc_build.txt)" }
+
+Write-Output "=== E6: run combo TB (MSVC build) ==="
+$exeM = "$WorkDir\ci_win32\Vtb_rand_combos_msvc.exe"
+& $exeM *> "$WorkDir\ci_win32\log_e6_run_msvc.txt"
+Write-Output "  run exit=$LASTEXITCODE"
+& "$WorkDir\ci_win32\check.ps1" -Log "$WorkDir\ci_win32\log_e6_run_msvc.txt" -Expected 11 -Label msvc
+if ($LASTEXITCODE -ne 0) { Die "combo TB check failed on MSVC build" }
+
+Write-Output "=== E7: bad-solver degradation (VERILATOR_SOLVER points nowhere) ==="
+$env:PATH = "$envRoot\Library\bin;$MsysRoot\ucrt64\bin;$base"
+$env:VERILATOR_SOLVER = "no_such_solver_xyz"
+& "$WorkDir\$objF\Vtb_free_only.exe" *> "$WorkDir\ci_win32\log_e7_badsolver.txt"
+$badExit = $LASTEXITCODE
+$hasWarn = Select-String -Path "$WorkDir\ci_win32\log_e7_badsolver.txt" -Pattern "solver|CreateProcess" -Quiet
+$freeOk  = Select-String -Path "$WorkDir\ci_win32\log_e7_badsolver.txt" -Pattern "\[SCEN\]\[free\].*PASS" -Quiet
+Write-Output "  exit=$badExit warn_seen=$hasWarn free_pass=$freeOk"
+Remove-Item env:VERILATOR_SOLVER
+if (($badExit -ne 0) -or (-not $freeOk)) { Die "bad-solver degradation failed" }
+
+Write-Output "=== E: ALL GREEN (MinGW behavior + MSVC behavior + bad-solver) ==="
+exit 0
