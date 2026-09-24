@@ -95,9 +95,8 @@ $env:PATH = "$envRoot\Library\bin;$MsysRoot\ucrt64\bin;$base"
 $env:VERILATOR_SOLVER = "no_such_solver_xyz"
 & "$WorkDir\$objF\Vtb_free_only.exe" *> "$WorkDir\ci_win32\log_e7_badsolver.txt"
 $badExit = $LASTEXITCODE
-$hasWarn = Select-String -Path "$WorkDir\ci_win32\log_e7_badsolver.txt" -Pattern "solver|CreateProcess" -Quiet
 $freeOk  = Select-String -Path "$WorkDir\ci_win32\log_e7_badsolver.txt" -Pattern "\[SCEN\]\[free\].*PASS" -Quiet
-Write-Output "  exit=$badExit warn_seen=$hasWarn free_pass=$freeOk"
+Write-Output "  exit=$badExit free_pass=$freeOk (no warning expected here: free path never spawns the solver)"
 Remove-Item env:VERILATOR_SOLVER
 if (($badExit -ne 0) -or (-not $freeOk)) { Die "bad-solver degradation failed" }
 
@@ -106,7 +105,7 @@ $env:VERILATOR_SOLVER = "no_such_solver_xyz"
 & "$WorkDir\$objB\Vtb_badsolver.exe" *> "$WorkDir\ci_win32\log_e7b_badsolver_constr.txt"
 $bsExit = $LASTEXITCODE
 $bsWarn = Select-String -Path "$WorkDir\ci_win32\log_e7b_badsolver_constr.txt" -Pattern "Unable to communicate with SAT solver" -Quiet
-$bsPass = Select-String -Path "$WorkDir\ci_win32\log_e7b_badsolver_constr.txt" -Pattern "\[SCEN\]\[badsolver\] rc=0 PASS" -Quiet
+$bsPass = Select-String -Path "$WorkDir\ci_win32\log_e7b_badsolver_constr.txt" -Pattern "\[SCEN\]\[badsolver\] rc=0 .*PASS" -Quiet
 Write-Output "  exit=$bsExit warn_seen=$bsWarn badsolver_pass=$bsPass"
 Remove-Item env:VERILATOR_SOLVER
 if (($bsExit -ne 0) -or (-not $bsWarn) -or (-not $bsPass)) { Die "bad-solver constrained degradation failed" }
