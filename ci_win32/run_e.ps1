@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026-2026 Wilson Snyder
+# SPDX-License-Identifier: LGPL-3.0-only OR Artistic-2.0
 # Job E: local-chain replication on the runner.
 #   conda-forge verilator 5.052 + z3, then swap in the PATCHED runtime from this branch,
 #   then build the model twice (MinGW g++ and MSVC cl) and run the combo TB on both.

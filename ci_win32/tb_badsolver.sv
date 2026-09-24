@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026-2026 Wilson Snyder
+// SPDX-License-Identifier: LGPL-3.0-only OR Artistic-2.0
 // Bad-solver degradation TB: run with VERILATOR_SOLVER pointing to a nonexistent command.
 // Expected under a broken solver: constrained randomize() returns 0 (graceful failure),
 // solver warning is printed, process exits cleanly (no crash).

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026-2026 Wilson Snyder
+// SPDX-License-Identifier: LGPL-3.0-only OR Artistic-2.0
 // Standalone main for the D-chain MSVC build (--cc --exe generates no main).
 // Standard Verilator model harness skeleton (same shape as upstream examples).
 #include "Vtb_rand_combos.h"

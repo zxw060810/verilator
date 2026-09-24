@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026-2026 Wilson Snyder
+// SPDX-License-Identifier: LGPL-3.0-only OR Artistic-2.0
 // Constraint randomization combination coverage test (Windows solver pipe validation)
 // Each scenario self-checks and prints [SCEN][name] ... PASS/FAIL; $fatal on any FAIL.
 // Scenarios: dist / solve_before / randc_full_cycle / inside / implication /

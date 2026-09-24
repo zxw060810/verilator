@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026-2026 Wilson Snyder
+# SPDX-License-Identifier: LGPL-3.0-only OR Artistic-2.0
 # Job D: official Windows build chain, end to end.
 #   ci-win-compile.ps1 has already produced ./install (MSVC-built Verilator with the patch).
 #   Here: verilate the combo TB with that Verilator, build the model with cl, run + assert.
