@@ -1,0 +1,306 @@
+name: Win UVM Matrix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [win-uvm-matrix]
+
+jobs:
+  setup-msvc:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get winflexbison
+        shell: pwsh
+        run: |
+          curl -L -o wfb.zip https://github.com/lexxmark/winflexbison/releases/download/v2.5.25/win_flex_bison-2.5.25.zip
+          Expand-Archive wfb.zip -DestinationPath D:\wfb
+          Test-Path D:\wfb\win_flex.exe
+      - name: Build Verilator (MSVC frontend)
+        shell: pwsh
+        run: |
+          $env:WIN_FLEX_BISON = "D:\wfb"
+          $VsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          Import-Module "$VsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_CXX_FLAGS_RELEASE=/O2 /DNDEBUG" --install-prefix D:/vl-msvc
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          cmake --build build -j $env:NUMBER_OF_PROCESSORS
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          cmake --install build --prefix D:/vl-msvc
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Upload
+        shell: pwsh
+        run: |
+          Compress-Archive -Path D:\vl-msvc -DestinationPath D:\vl-msvc.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vl-msvc
+          path: D:\vl-msvc.zip
+          retention-days: 3
+
+  setup-gpp:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: false
+          install: make python unzip
+          pacboy: >-
+            toolchain:p
+            cmake:p
+            ninja:p
+      - name: Get winflexbison
+        shell: msys2 {0}
+        run: |
+          curl -L -o /d/wfb.zip https://github.com/lexxmark/winflexbison/releases/download/v2.5.25/win_flex_bison-2.5.25.zip
+          mkdir -p /d/wfb && cd /d/wfb && unzip -o /d/wfb.zip
+          ls /d/wfb/win_flex.exe
+      - name: Build Verilator (g++ frontend)
+        shell: msys2 {0}
+        run: |
+          export WIN_FLEX_BISON=D:/wfb
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release --install-prefix D:/vl-gpp
+          cmake --build build -j $(nproc)
+          cmake --install build --prefix D:/vl-gpp
+      - name: Upload
+        shell: pwsh
+        run: |
+          Compress-Archive -Path D:\vl-gpp -DestinationPath D:\vl-gpp.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vl-gpp
+          path: D:\vl-gpp.zip
+          retention-days: 3
+
+  cells:
+    needs: [setup-msvc, setup-gpp]
+    runs-on: windows-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        cell:
+          - msvc-f1-cl
+          - msvc-f1-gpp
+          - msvc-f1-clang
+          - msvc-f2-gpp
+          - msvc-f2-clang
+          - msvc-f3-gpp
+          - msvc-f3-clang
+          - gpp-f1-cl
+          - gpp-f1-gpp
+          - gpp-f1-clang
+          - gpp-f2-default
+          - gpp-f2-clang
+          - gpp-f3-gpp
+          - gpp-f3-clang
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ contains(matrix.cell, 'msvc') && 'vl-msvc' || 'vl-gpp' }}
+          path: D:\fe
+      - name: Unpack frontend
+        shell: pwsh
+        run: |
+          $fe = '${{ matrix.cell }}'.Split('-')[0]
+          Expand-Archive "D:\fe\vl-$fe.zip" -DestinationPath D:\
+          Rename-Item "D:\vl-$fe" "vl"
+          Get-ChildItem D:\vl
+      # ---------- F1 x cl: pure MSVC model via VS generator (official ci-win-test pattern) ----------
+      - name: Run cell (f1-cl)
+        if: matrix.cell == 'msvc-f1-cl' || matrix.cell == 'gpp-f1-cl'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:VERILATOR_ROOT = 'D:\vl'
+          $ws = $env:GITHUB_WORKSPACE -replace '\\', '/'
+          $uvm = "$ws/test_regress/t/uvm"
+          $tst = "$ws/test_regress/t"
+          New-Item -ItemType Directory -Path D:\model -Force | Out-Null
+          Set-Location D:\model
+          @'
+          cmake_minimum_required(VERSION 3.12)
+          cmake_policy(SET CMP0074 NEW)
+          project(uvm_sim CXX)
+          find_package(verilator HINTS $ENV{VERILATOR_ROOT})
+          if(NOT verilator_FOUND)
+              message(FATAL_ERROR "Verilator not found; set VERILATOR_ROOT")
+          endif()
+          add_executable(Vt sim_main.cpp)
+          target_compile_features(Vt PUBLIC cxx_std_20)
+          verilate(Vt
+              PREFIX Vt
+              INCLUDE_DIRS "@@UVM@@"
+              SOURCES "@@UVM@@/uvm_pkg_all_v2020_3_2_nodpi.svh" "@@TST@@/t_uvm_hello.v"
+              TOP_MODULE t
+              VERILATOR_ARGS --timing -Wno-fatal
+          )
+          target_compile_definitions(Vt PRIVATE VL_TIME_CONTEXT)
+          '@ -replace '@@UVM@@', $uvm -replace '@@TST@@', $tst | Set-Content -Encoding ascii CMakeLists.txt
+          @"
+          #include <memory>
+          #include "Vt.h"
+          #include "verilated.h"
+          int main(int argc, char** argv) {
+              Verilated::commandArgs(argc, argv);
+              const std::unique_ptr<VerilatedContext> contextp{new VerilatedContext};
+              contextp->commandArgs(argc, argv);
+              const std::unique_ptr<Vt> topp{new Vt{contextp.get()}};
+              while (!contextp->gotFinish()) topp->eval();
+              topp->final();
+              return 0;
+          }
+          "@ | Set-Content -Encoding ascii sim_main.cpp
+          $VsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          Import-Module "$VsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"
+          Set-Location D:\model
+          cmake -S . -B build "-DCMAKE_CXX_FLAGS_RELEASE=/O2 /DNDEBUG /MT"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          cmake --build build --config Release -j $env:NUMBER_OF_PROCESSORS
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $out = & build\Release\Vt.exe +UVM_NO_RELNOTES 2>&1 | Out-String
+          $out
+          if ($out -notmatch 'UVM TEST PASSED') { exit 1 }
+          if ($out -match 'UVM_ERROR :\s*[1-9]') { exit 1 }
+          echo "CELL ${{ matrix.cell }} PASS"
+      # ---------- everything else: msys2 ----------
+      - uses: msys2/setup-msys2@v2
+        if: matrix.cell != 'msvc-f1-cl' && matrix.cell != 'gpp-f1-cl'
+        with:
+          update: false
+          install: make python
+          pacboy: >-
+            toolchain:p
+            cmake:p
+            ninja:p
+            clang:p
+            libc++:p
+            libsystre:p
+      - name: Run cell (f1-gpp / f1-clang)
+        if: matrix.cell == 'msvc-f1-gpp' || matrix.cell == 'msvc-f1-clang' || matrix.cell == 'gpp-f1-gpp' || matrix.cell == 'gpp-f1-clang'
+        shell: msys2 {0}
+        run: |
+          set -euxo pipefail
+          export VERILATOR_ROOT=D:/vl
+          export TMP=D:/tmp TEMP=D:/tmp TMPDIR=D:/tmp && mkdir -p /d/tmp
+          WS=$(cygpath -m "$GITHUB_WORKSPACE")
+          UVM=$WS/test_regress/t/uvm
+          TST=$WS/test_regress/t
+          mkdir -p /d/model && cd /d/model
+          cat > CMakeLists.txt <<EOF
+          cmake_minimum_required(VERSION 3.12)
+          cmake_policy(SET CMP0074 NEW)
+          project(uvm_sim CXX)
+          find_package(verilator HINTS \$ENV{VERILATOR_ROOT})
+          add_executable(Vt sim_main.cpp)
+          target_compile_features(Vt PUBLIC cxx_std_20)
+          verilate(Vt PREFIX Vt INCLUDE_DIRS "${UVM}"
+              SOURCES "${UVM}/uvm_pkg_all_v2020_3_2_nodpi.svh" "${TST}/t_uvm_hello.v"
+              TOP_MODULE t VERILATOR_ARGS --timing -Wno-fatal)
+          target_compile_definitions(Vt PRIVATE VL_TIME_CONTEXT)
+          EOF
+          cat > sim_main.cpp <<'EOF'
+          #include <memory>
+          #include "Vt.h"
+          #include "verilated.h"
+          int main(int argc, char** argv) {
+              Verilated::commandArgs(argc, argv);
+              const std::unique_ptr<VerilatedContext> contextp{new VerilatedContext};
+              contextp->commandArgs(argc, argv);
+              const std::unique_ptr<Vt> topp{new Vt{contextp.get()}};
+              while (!contextp->gotFinish()) topp->eval();
+              topp->final();
+              return 0;
+          }
+          EOF
+          if [[ "${{ matrix.cell }}" == *clang ]]; then
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+              -DCMAKE_CXX_FLAGS_RELEASE="-O2 -stdlib=libc++"
+          else
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          fi
+          cmake --build build -j $(nproc)
+          out=$(./build/Vt.exe +UVM_NO_RELNOTES < /dev/null 2>&1)
+          echo "$out"
+          echo "$out" | grep -q 'UVM TEST PASSED'
+          echo "$out" | grep -q 'UVM_ERROR :    0'
+          echo "CELL ${{ matrix.cell }} PASS"
+      - name: Run cell (f2/f3)
+        if: matrix.cell == 'msvc-f2-gpp' || matrix.cell == 'msvc-f2-clang' || matrix.cell == 'gpp-f2-default' || matrix.cell == 'gpp-f2-clang' || matrix.cell == 'msvc-f3-gpp' || matrix.cell == 'msvc-f3-clang' || matrix.cell == 'gpp-f3-gpp' || matrix.cell == 'gpp-f3-clang'
+        shell: msys2 {0}
+        run: |
+          set -euxo pipefail
+          export VERILATOR_ROOT=D:/vl
+          export TMP=D:/tmp TEMP=D:/tmp TMPDIR=D:/tmp && mkdir -p /d/tmp
+          WS=$(cygpath -m "$GITHUB_WORKSPACE")
+          UVM=$WS/test_regress/t/uvm
+          TST=$WS/test_regress/t
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"/test_regress
+          cell=${{ matrix.cell }}
+          if [[ "$cell" == msvc-f2-gpp ]]; then
+            export MAKEFLAGS='CXX=g++ LINK=g++ AR=ar PYTHON3=python'
+            D:/vl/bin/verilator_bin.exe --binary -j 4 -CFLAGS -O2 -CFLAGS -DVL_TIME_CONTEXT --timing -Wno-fatal --top-module t +incdir+"$UVM" "$UVM/uvm_pkg_all_v2020_3_2_nodpi.svh" "$TST/t_uvm_hello.v" -Mdir obj_c
+            out=$(./obj_c/Vt.exe +UVM_NO_RELNOTES < /dev/null 2>&1)
+          elif [[ "$cell" == gpp-f2-default ]]; then
+            D:/vl/bin/verilator_bin.exe --binary -j 4 -CFLAGS -O2 -CFLAGS -DVL_TIME_CONTEXT --timing -Wno-fatal --top-module t +incdir+"$UVM" "$UVM/uvm_pkg_all_v2020_3_2_nodpi.svh" "$TST/t_uvm_hello.v" -Mdir obj_c
+            out=$(./obj_c/Vt.exe +UVM_NO_RELNOTES < /dev/null 2>&1)
+          elif [[ "$cell" == msvc-f2-clang || "$cell" == gpp-f2-clang ]]; then
+            export MAKEFLAGS='CXX=clang++\ -std=c++20\ -stdlib=libc++ LINK=clang++\ -std=c++20\ -stdlib=libc++ AR=llvm-ar PYTHON3=python'
+            D:/vl/bin/verilator_bin.exe --binary -j 4 -CFLAGS -O2 -CFLAGS -DVL_TIME_CONTEXT --timing -Wno-fatal --top-module t +incdir+"$UVM" "$UVM/uvm_pkg_all_v2020_3_2_nodpi.svh" "$TST/t_uvm_hello.v" -Mdir obj_c
+            out=$(./obj_c/Vt.exe +UVM_NO_RELNOTES < /dev/null 2>&1)
+          else
+            cat > /d/model_sim_main.cpp <<'EOF'
+          #include <memory>
+          #include "Vt.h"
+          #include "verilated.h"
+          int main(int argc, char** argv) {
+              Verilated::commandArgs(argc, argv);
+              const std::unique_ptr<VerilatedContext> contextp{new VerilatedContext};
+              contextp->commandArgs(argc, argv);
+              const std::unique_ptr<Vt> topp{new Vt{contextp.get()}};
+              while (!contextp->gotFinish()) topp->eval();
+              topp->final();
+              return 0;
+          }
+          EOF
+            D:/vl/bin/verilator_bin.exe --cc --exe -j 4 -CFLAGS -O2 -CFLAGS -DVL_TIME_CONTEXT --timing -Wno-fatal --top-module t +incdir+"$UVM" "$UVM/uvm_pkg_all_v2020_3_2_nodpi.svh" "$TST/t_uvm_hello.v" /d/model_sim_main.cpp -Mdir obj_c
+            if [[ "$cell" == *clang ]]; then
+              make -C obj_c -f Vt.mk -j 4 'CXX=clang++ -std=c++20 -stdlib=libc++' 'LINK=clang++ -std=c++20 -stdlib=libc++' AR=llvm-ar PYTHON3=python
+            else
+              make -C obj_c -f Vt.mk -j 4 CXX=g++ LINK=g++ AR=ar PYTHON3=python
+            fi
+            out=$(./obj_c/Vt.exe +UVM_NO_RELNOTES < /dev/null 2>&1)
+          fi
+          echo "$out"
+          echo "$out" | grep -q 'UVM TEST PASSED'
+          echo "$out" | grep -q 'UVM_ERROR :    0'
+          echo "CELL ${{ matrix.cell }} PASS"
+      # ---------- DPI extra on the gpp main-line cell ----------
+      - name: Run cell (DPI extra)
+        if: matrix.cell == 'gpp-f2-default'
+        shell: msys2 {0}
+        run: |
+          set -euxo pipefail
+          export VERILATOR_ROOT=D:/vl
+          export TMP=D:/tmp TEMP=D:/tmp TMPDIR=D:/tmp
+          WS=$(cygpath -m "$GITHUB_WORKSPACE")
+          UVM=$WS/test_regress/t/uvm
+          TST=$WS/test_regress/t
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"/test_regress
+          cat > /d/vlog_startup_null.c <<'EOF'
+          void (*vlog_startup_routines[])(void) = {0};
+          EOF
+          D:/vl/bin/verilator_bin.exe --binary -j 4 --vpi --CFLAGS -O0 -Wall -Wno-fatal -CFLAGS -DPLI_DLLISPEC= -CFLAGS -DDPI_DLLISPEC= -LDFLAGS -lregex +incdir+"$UVM" "$UVM/uvm_pkg_all_v2020_3_2_dpi.svh" "$UVM/v2020_3_2/dpi/uvm_dpi.cc" /d/vlog_startup_null.c "$TST/t_uvm_hello.v" -Mdir obj_dpi
+          out=$(./obj_dpi/Vuvm_pkg_all_v2020_3_2_dpi.exe +UVM_NO_RELNOTES < /dev/null 2>&1)
+          echo "$out"
+          echo "$out" | grep -q 'UVM TEST PASSED'
+          echo "$out" | grep -q 'UVM_ERROR :    0'
+          echo "CELL gpp-f2-default-dpi PASS"
