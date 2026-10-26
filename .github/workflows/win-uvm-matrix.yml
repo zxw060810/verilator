@@ -163,7 +163,8 @@ jobs:
           Import-Module "$VsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
           Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"
           Set-Location D:\model
-          cmake -S . -B build "-DCMAKE_CXX_FLAGS_RELEASE=/O2 /DNDEBUG /MT"
+          # /MP: file-level parallel cl compilation (1979 UVM model cpp files)
+          cmake -S . -B build "-DCMAKE_CXX_FLAGS_RELEASE=/O2 /DNDEBUG /MT /MP"
           if ($LASTEXITCODE -ne 0) { exit 1 }
           cmake --build build --config Release -j $env:NUMBER_OF_PROCESSORS
           if ($LASTEXITCODE -ne 0) { exit 1 }
