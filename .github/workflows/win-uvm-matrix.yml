@@ -118,6 +118,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:VERILATOR_ROOT = 'D:\vl'
+          $env:VERILATOR_BIN = 'D:\vl\bin\verilator_bin.exe'
           $ws = $env:GITHUB_WORKSPACE -replace '\\', '/'
           $uvm = "$ws/test_regress/t/uvm"
           $tst = "$ws/test_regress/t"
@@ -253,7 +254,7 @@ jobs:
             D:/vl/bin/verilator_bin.exe --binary -j 4 -CFLAGS -O2 -CFLAGS -DVL_TIME_CONTEXT --timing -Wno-fatal --top-module t +incdir+"$UVM" "$UVM/uvm_pkg_all_v2020_3_2_nodpi.svh" "$TST/t_uvm_hello.v" -Mdir obj_c
             out=$(./obj_c/Vt.exe +UVM_NO_RELNOTES < /dev/null 2>&1)
           elif [[ "$cell" == msvc-f2-clang || "$cell" == gpp-f2-clang ]]; then
-            export MAKEFLAGS='CXX=clang++\ -std=c++20\ -stdlib=libc++ LINK=clang++\ -std=c++20\ -stdlib=libc++ AR=llvm-ar PYTHON3=python'
+            export MAKEFLAGS='CXX=clang++\ -std=c++20\ -stdlib=libc++ LINK=clang++\ -std=c++20\ -stdlib=libc++ AR=ar PYTHON3=python'
             D:/vl/bin/verilator_bin.exe --binary -j 4 -CFLAGS -O2 -CFLAGS -DVL_TIME_CONTEXT --timing -Wno-fatal --top-module t +incdir+"$UVM" "$UVM/uvm_pkg_all_v2020_3_2_nodpi.svh" "$TST/t_uvm_hello.v" -Mdir obj_c
             out=$(./obj_c/Vt.exe +UVM_NO_RELNOTES < /dev/null 2>&1)
           else
@@ -273,7 +274,7 @@ jobs:
           EOF
             D:/vl/bin/verilator_bin.exe --cc --exe -j 4 -CFLAGS -O2 -CFLAGS -DVL_TIME_CONTEXT --timing -Wno-fatal --top-module t +incdir+"$UVM" "$UVM/uvm_pkg_all_v2020_3_2_nodpi.svh" "$TST/t_uvm_hello.v" /d/model_sim_main.cpp -Mdir obj_c
             if [[ "$cell" == *clang ]]; then
-              make -C obj_c -f Vt.mk -j 4 'CXX=clang++ -std=c++20 -stdlib=libc++' 'LINK=clang++ -std=c++20 -stdlib=libc++' AR=llvm-ar PYTHON3=python
+              make -C obj_c -f Vt.mk -j 4 'CXX=clang++ -std=c++20 -stdlib=libc++' 'LINK=clang++ -std=c++20 -stdlib=libc++' AR=ar PYTHON3=python
             else
               make -C obj_c -f Vt.mk -j 4 CXX=g++ LINK=g++ AR=ar PYTHON3=python
             fi
