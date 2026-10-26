@@ -112,11 +112,18 @@ jobs:
           Rename-Item "D:\vl-$fe" "vl"
           Get-ChildItem D:\vl
       # ---------- F1 x cl: pure MSVC model via VS generator (official ci-win-test pattern) ----------
+      - uses: msys2/setup-msys2@v2
+        if: matrix.cell == 'msvc-f1-cl' || matrix.cell == 'gpp-f1-cl'
+        with:
+          update: false
+          pacboy: toolchain:p
       - name: Run cell (f1-cl)
         if: matrix.cell == 'msvc-f1-cl' || matrix.cell == 'gpp-f1-cl'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          # g++-built verilator_bin.exe needs ucrt64 runtime DLLs on PATH
+          $env:PATH += ';C:\msys64\ucrt64\bin'
           $env:VERILATOR_ROOT = 'D:\vl'
           $env:VERILATOR_BIN = 'D:\vl\bin\verilator_bin.exe'
           $ws = $env:GITHUB_WORKSPACE -replace '\\', '/'
