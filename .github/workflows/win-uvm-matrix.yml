@@ -63,7 +63,9 @@ jobs:
         shell: msys2 {0}
         run: |
           export WIN_FLEX_BISON=D:/wfb
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release --install-prefix D:/vl-gpp
+          # -static: self-contained verilator_bin.exe (no libstdc++ DLL deps),
+          # so it can run from any shell (e.g. MSVC dev shell in f1-cl cells)
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXE_LINKER_FLAGS=-static --install-prefix D:/vl-gpp
           cmake --build build -j $(nproc)
           cmake --install build --prefix D:/vl-gpp
       - name: Upload
@@ -112,18 +114,11 @@ jobs:
           Rename-Item "D:\vl-$fe" "vl"
           Get-ChildItem D:\vl
       # ---------- F1 x cl: pure MSVC model via VS generator (official ci-win-test pattern) ----------
-      - uses: msys2/setup-msys2@v2
-        if: matrix.cell == 'msvc-f1-cl' || matrix.cell == 'gpp-f1-cl'
-        with:
-          update: false
-          pacboy: toolchain:p
       - name: Run cell (f1-cl)
         if: matrix.cell == 'msvc-f1-cl' || matrix.cell == 'gpp-f1-cl'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # g++-built verilator_bin.exe needs ucrt64 runtime DLLs on PATH
-          $env:PATH += ';C:\msys64\ucrt64\bin'
           $env:VERILATOR_ROOT = 'D:\vl'
           $env:VERILATOR_BIN = 'D:\vl\bin\verilator_bin.exe'
           $ws = $env:GITHUB_WORKSPACE -replace '\\', '/'
