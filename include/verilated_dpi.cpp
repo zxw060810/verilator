@@ -29,18 +29,33 @@
 
 #include "verilatedos.h"
 
-#include "verilated_dpi.h"
-
-#include "verilated_imp.h"
-
-// On MSVC++ we need svdpi.h to declare exports, not imports
+// clang-format off
+// On MSVC++ we need svdpi.h to declare exports, not imports.  This must happen before
+// verilated_dpi.h is included, as that includes svdpi.h itself and svdpi.h's include guard
+// makes a second inclusion a no-op, so keep these includes in this order.
 #define DPI_PROTOTYPES
 #undef XXTERN
 #define XXTERN DPI_EXTERN DPI_DLLESPEC
 #undef EETERN
 #define EETERN DPI_EXTERN DPI_DLLESPEC
 
+// svdpi.h also applies that attribute to its typedefs, where it is meaningless and so is
+// diagnosed; the header is IEEE-1800 text that must not be modified, so filter it out
+#if defined(__GNUC__) && (defined(__MINGW32__) || defined(__CYGWIN__))
+# pragma GCC diagnostic push
+# pragma GCC diagnostic ignored "-Wattributes"
+#endif
+
 #include "vltstd/svdpi.h"
+
+#if defined(__GNUC__) && (defined(__MINGW32__) || defined(__CYGWIN__))
+# pragma GCC diagnostic pop
+#endif
+
+#include "verilated_dpi.h"
+
+#include "verilated_imp.h"
+// clang-format on
 
 //======================================================================
 // Internal macros
