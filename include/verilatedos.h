@@ -48,7 +48,6 @@
 # define VL_ATTR_NOINLINE __attribute__((noinline))
 # define VL_ATTR_COLD __attribute__((cold))
 # define VL_ATTR_HOT __attribute__((hot))
-# define VL_ATTR_NORETURN __attribute__((noreturn))
 // clang and gcc-8.0+ support no_sanitize("string") style attribute
 # if defined(__clang__) || (__GNUC__ >= 8)
 #  define VL_ATTR_NO_SANITIZE_ALIGN __attribute__((no_sanitize("alignment")))
@@ -161,6 +160,12 @@
         VL_CLANG_ATTR(annotate("PT_GUARDED_BY"))
 #endif
 
+// Attribute that function does not ever return
+// This is a standard C++11 attribute rather than a compiler extension, and unlike the other
+// VL_ATTR_* macros it must be written before the declaration it applies to, so all uses of it
+// place it in the leading position
+#define VL_ATTR_NORETURN [[noreturn]]
+
 // Defaults for unsupported compiler features
 #ifndef VL_ATTR_ALWINLINE
 # define VL_ATTR_ALWINLINE inline  ///< Attribute to inline, even when not optimizing
@@ -173,9 +178,6 @@
 #endif
 #ifndef VL_ATTR_HOT
 # define VL_ATTR_HOT  ///< Attribute that function is highly executed
-#endif
-#ifndef VL_ATTR_NORETURN
-# define VL_ATTR_NORETURN  ///< Attribute that function does not ever return
 #endif
 #ifndef VL_ATTR_NO_SANITIZE_ALIGN
 # define VL_ATTR_NO_SANITIZE_ALIGN  ///< Attribute that function contains intended unaligned access
